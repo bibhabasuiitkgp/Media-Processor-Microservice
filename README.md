@@ -145,6 +145,22 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
+## Example Image Processing
+
+Below are examples demonstrating the enhancement capabilities of our system:
+
+<div style="display: flex; justify-content: space-between; margin: 20px 0;">
+    <div style="flex: 1; margin-right: 10px;">
+        <p align="center"><strong>Original Image</strong></p>
+        <img src="Example_Reference/Image_Enhancement/low_light1.png" alt="Original Image" style="width: 100%;">
+    </div>
+    <div style="flex: 1; margin-left: 10px;">
+        <p align="center"><strong>Enhanced Image</strong></p>
+        <img src="Example_Reference/Image_Enhancement/Enhanced.png" alt="Enhanced Image" style="width: 100%;">
+    </div>
+</div>
+
+
 ## Example References
 
 The `Example_Reference` folder contains processed samples that demonstrate the system's capabilities. You can use these as reference points to understand the expected output quality and features.
