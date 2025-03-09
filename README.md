@@ -149,6 +149,10 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 The `Example_Reference` folder contains processed samples that demonstrate the system's capabilities. You can use these as reference points to understand the expected output quality and features.
 
+## test_images_videos
+
+The `test_images_videos` folder contains some samples (Images and Videos) that can be used by user to generate outputs for image as well as video processing.
+
 ## Error Handling
 
 The API includes comprehensive error handling:
