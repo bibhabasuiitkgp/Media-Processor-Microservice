@@ -1,0 +1,7 @@
+2025-03-09 10:38:09,958 - INFO - Processing video 1/2: static/uploads/videos\ed1c94c1-f2e5-4b45-bf0b-c744613bb4e6\video1.mp4
+2025-03-09 10:38:15,030 - INFO - Processing video 2/2: static/uploads/videos\ed1c94c1-f2e5-4b45-bf0b-c744613bb4e6\video2.mp4
+2025-03-09 11:08:45,212 - ERROR - Error in video stitching: 'VideoStitcher' object has no attribute 'stitch_videos'
+2025-03-09 11:09:36,604 - ERROR - Error in video stitching: 'VideoStitcher' object has no attribute 'stitch_videos'
+2025-03-09 11:12:20,086 - ERROR - Error in video stitching: 'VideoStitcher' object has no attribute 'stitch_videos'
+2025-03-09 11:14:58,844 - INFO - Processing video 1/2: static/uploads/videos\7c6c34cd-20d9-42c0-9013-10eae4b3dcee\video1.mp4
+2025-03-09 11:15:04,414 - INFO - Processing video 2/2: static/uploads/videos\7c6c34cd-20d9-42c0-9013-10eae4b3dcee\video2.mp4
