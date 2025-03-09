@@ -147,7 +147,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 ## Example References
 
-The `Example_reference` folder contains processed samples that demonstrate the system's capabilities. You can use these as reference points to understand the expected output quality and features.
+The `Example_Reference` folder contains processed samples that demonstrate the system's capabilities. You can use these as reference points to understand the expected output quality and features.
 
 ## Error Handling
 
