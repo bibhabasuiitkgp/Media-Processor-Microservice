@@ -149,16 +149,20 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 Below are examples demonstrating the enhancement capabilities of our system:
 
-<div style="display: flex; justify-content: space-between; margin: 20px 0;">
-    <div style="flex: 1; margin-right: 10px;">
-        <p align="center"><strong>Original Image</strong></p>
-        <img src="Example_Reference/Image_Enhancement/low_light1.png" alt="Original Image" style="width: 100%;">
-    </div>
-    <div style="flex: 1; margin-left: 10px;">
-        <p align="center"><strong>Enhanced Image</strong></p>
-        <img src="Example_Reference/Image_Enhancement/Enhanced.png" alt="Enhanced Image" style="width: 100%;">
-    </div>
-</div>
+<table>
+  <tr>
+    <th align="center">Original Image</th>
+    <th align="center">Enhanced Image</th>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="Example_Reference/Image_Enhancement/low_light1.png" alt="Original Image" width="100%">
+    </td>
+    <td align="center">
+      <img src="Example_Reference/Image_Enhancement/Enhanced.png" alt="Enhanced Image" width="100%">
+    </td>
+  </tr>
+</table>
 
 
 ## Example References
