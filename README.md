@@ -51,7 +51,7 @@ A FastAPI-based API service for image and video processing, including enhancemen
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd mansio-media-processing
+cd Media-Processor-Microservice
 ```
 
 2. Create a virtual environment:
