@@ -7,8 +7,8 @@ import os
 from datetime import datetime
 import uuid
 import logging
-from Image.Image import ImageProcessor
-from video_enhancement.Video import VideoProcessor
+from Image_Enhancement.Image import ImageProcessor
+from Video_enhancement.Video import VideoProcessor
 from Video_stitch.Video import VideoStitcher
 
 app = FastAPI(title="Mansio Media Processing API")
