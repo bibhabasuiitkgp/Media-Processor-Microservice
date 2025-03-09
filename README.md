@@ -147,8 +147,6 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 ## Example Image Processing
 
-Below are examples demonstrating the enhancement capabilities of our system:
-
 <table>
   <tr>
     <th align="center">Original Image</th>
