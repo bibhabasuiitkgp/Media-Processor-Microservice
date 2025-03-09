@@ -11,7 +11,7 @@ from Image_Enhancement.Image import ImageProcessor
 from Video_enhancement.Video import VideoProcessor
 from Video_stitch.Video import VideoStitcher
 
-app = FastAPI(title="Mansio")
+app = FastAPI(title="Mansio API for Media Processing")
 
 # Configure CORS
 app.add_middleware(
