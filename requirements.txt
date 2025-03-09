@@ -1,13 +1,8 @@
-# FastAPI and related dependencies
-fastapi==2.0.0
-python-multipart==0.0.7
-uvicorn==0.27.0
-starlette==0.36.3
-
-# Image and Video Processing
-opencv-python==4.9.0
-numpy==1.26.0
-Pillow==10.2.0
-
-# Typing support (included in Python 3.x but listed for compatibility)
-typing-extensions==4.9.0
+numpy>=1.21.0
+opencv-python>=4.5.0
+tqdm>=4.65.0
+typing-extensions>=4.0.0
+python-dateutil>=2.8.2
+fastapi>=0.68.0
+python-multipart>=0.0.5
+uvicorn>=0.15.0

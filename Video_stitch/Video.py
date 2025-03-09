@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import logging
-import os
 from typing import List, Tuple, Optional
 from datetime import datetime
 
