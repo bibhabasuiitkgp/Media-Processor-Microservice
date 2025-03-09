@@ -173,11 +173,3 @@ The API supports Cross-Origin Resource Sharing (CORS) with the following configu
 2. Unique filename generation using UUID
 3. Automatic cleanup of temporary files
 4. Input/output path validation
-
-## License
-
-[Add your license information here]
-
-## Contributing
-
-[Add contribution guidelines here]
