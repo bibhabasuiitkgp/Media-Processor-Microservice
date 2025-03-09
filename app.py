@@ -11,7 +11,7 @@ from Image_Enhancement.Image import ImageProcessor
 from Video_enhancement.Video import VideoProcessor
 from Video_stitch.Video import VideoStitcher
 
-app = FastAPI(title="Mansio Media Processing API")
+app = FastAPI(title="Mansio")
 
 # Configure CORS
 app.add_middleware(
@@ -29,12 +29,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 DIRS = {
     "image": {
         "upload": "static/uploads/images",
-        "processed": "static/processed/images"
+        "processed": "static/processed/images",
     },
     "video": {
         "upload": "static/uploads/videos",
-        "processed": "static/processed/videos"
-    }
+        "processed": "static/processed/videos",
+    },
 }
 
 for media_type in DIRS.values():
@@ -46,7 +46,7 @@ CURRENT_USER = "bibhabasuiitkgp"
 CURRENT_TIMESTAMP = "2025-03-09 05:59:54"
 
 image_processor = ImageProcessor()
-video_processor = VideoProcessor(user_login=CURRENT_USER, timestamp=CURRENT_TIMESTAMP)
+video_processor = VideoProcessor()
 video_stitcher = VideoStitcher(user_login=CURRENT_USER)
 
 # Setup logging
@@ -60,6 +60,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 @app.post("/enhance/image/")
 async def enhance_image(file: UploadFile = File(...)):
     """
@@ -67,87 +68,106 @@ async def enhance_image(file: UploadFile = File(...)):
     Returns the URL of the enhanced image
     """
     try:
-        if not file.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp')):
+        # Validate file format
+        if not file.filename.lower().endswith(
+            (".png", ".jpg", ".jpeg", ".tiff", ".bmp")
+        ):
             raise HTTPException(status_code=400, detail="Invalid image format")
 
+        # Generate unique filename
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{str(uuid.uuid4())}{file_extension}"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
+        # Set up input and output paths
         input_path = os.path.join(DIRS["image"]["upload"], f"input_{unique_filename}")
-        output_path = os.path.join(DIRS["image"]["processed"], f"enhanced_{timestamp}_{unique_filename}")
-        
+        output_path = os.path.join(
+            DIRS["image"]["processed"], f"enhanced_{timestamp}_{unique_filename}"
+        )
+
+        # Save uploaded file
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
+
+        # Process the image
         success, message = image_processor.adjust_brightness(input_path, output_path)
-        
+
+        # Clean up input file
         if os.path.exists(input_path):
             os.remove(input_path)
-        
+
         if success:
             return {
                 "status": "success",
                 "message": message,
-                "enhanced_image_url": f"/static/processed/images/enhanced_{timestamp}_{unique_filename}"
+                "enhanced_image_url": f"/static/processed/images/enhanced_{timestamp}_{unique_filename}",
             }
         else:
             raise HTTPException(status_code=500, detail=message)
-            
+
     except Exception as e:
         logger.error(f"Error processing image: {str(e)}")
-        if 'input_path' in locals() and os.path.exists(input_path):
+        # Clean up files in case of error
+        if "input_path" in locals() and os.path.exists(input_path):
             os.remove(input_path)
-        if 'output_path' in locals() and os.path.exists(output_path):
+        if "output_path" in locals() and os.path.exists(output_path):
             os.remove(output_path)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/enhance/video/")
 async def enhance_video(file: UploadFile = File(...)):
     """
-    Upload and enhance a video with Mansio watermark
+    Upload and enhance a video
     Returns the URL of the enhanced video
     """
     try:
-        if not file.filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+        # Validate file format
+        if not file.filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
             raise HTTPException(status_code=400, detail="Invalid video format")
 
+        # Generate unique filename
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{str(uuid.uuid4())}{file_extension}"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
+        # Set up input and output paths
         input_path = os.path.join(DIRS["video"]["upload"], f"input_{unique_filename}")
-        output_path = os.path.join(DIRS["video"]["processed"], f"enhanced_{timestamp}_{unique_filename}")
-        
+        output_path = os.path.join(
+            DIRS["video"]["processed"], f"enhanced_{timestamp}_{unique_filename}"
+        )
+
+        # Save uploaded file
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
-        success, message = video_processor.process_video(input_path, output_path)
-        
+
+        # Process the video
+        success, message = video_processor.adjust_video_brightness(
+            input_path, output_path, max_workers=4
+        )
+
+        # Clean up input file
         if os.path.exists(input_path):
             os.remove(input_path)
-        
+
         if success:
             return {
                 "status": "success",
-                "message": message,
+                "message": "Video enhanced successfully",
                 "enhanced_video_url": f"/static/processed/videos/enhanced_{timestamp}_{unique_filename}",
-                "watermark_info": {
-                    "user": CURRENT_USER,
-                    "timestamp": CURRENT_TIMESTAMP,
-                    "brand": "Mansio"
-                }
             }
         else:
             raise HTTPException(status_code=500, detail=message)
-            
+
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
-        if 'input_path' in locals() and os.path.exists(input_path):
+        # Clean up files in case of error
+        if "input_path" in locals() and os.path.exists(input_path):
             os.remove(input_path)
-        if 'output_path' in locals() and os.path.exists(output_path):
+        if "output_path" in locals() and os.path.exists(output_path):
             os.remove(output_path)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/stitch/videos/")
 async def stitch_videos(files: List[UploadFile] = File(...)):
@@ -158,10 +178,10 @@ async def stitch_videos(files: List[UploadFile] = File(...)):
     try:
         # Validate files
         for file in files:
-            if not file.filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+            if not file.filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
                 raise HTTPException(
-                    status_code=400, 
-                    detail=f"Invalid video format for file: {file.filename}"
+                    status_code=400,
+                    detail=f"Invalid video format for file: {file.filename}",
                 )
 
         # Create temporary directory for uploaded files
@@ -187,10 +207,7 @@ async def stitch_videos(files: List[UploadFile] = File(...)):
             output_path = os.path.join(DIRS["video"]["processed"], output_filename)
 
             # Stitch videos
-            success, message = video_stitcher.process_videos(
-                video_paths,
-                output_path
-            )
+            success, message = video_stitcher.process_videos(video_paths, output_path)
 
             if success:
                 return {
@@ -200,8 +217,8 @@ async def stitch_videos(files: List[UploadFile] = File(...)):
                     "watermark_info": {
                         "user": CURRENT_USER,
                         "timestamp": CURRENT_TIMESTAMP,
-                        "brand": "Mansio"
-                    }
+                        "brand": "Mansio",
+                    },
                 }
             else:
                 raise HTTPException(status_code=500, detail=message)
@@ -213,10 +230,12 @@ async def stitch_videos(files: List[UploadFile] = File(...)):
 
     except Exception as e:
         logger.error(f"Error in video stitching: {str(e)}")
-        if 'output_path' in locals() and os.path.exists(output_path):
+        if "output_path" in locals() and os.path.exists(output_path):
             os.remove(output_path)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

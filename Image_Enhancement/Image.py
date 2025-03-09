@@ -1,205 +1,126 @@
-import cv2
 import numpy as np
-from PIL import Image
+import cv2
 import logging
+from typing import Tuple
 import os
-from typing import Tuple, Optional
-from dataclasses import dataclass
-
-
-# First, include the ImageMetrics and ImageProcessor classes you provided
-@dataclass
-class ImageMetrics:
-    mean_brightness: float
-    contrast: float
-    histogram_spread: float
 
 
 class ImageProcessor:
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-
-        # Threshold values for brightness adjustment
-        self.BRIGHTNESS_LOW_THRESHOLD = 80  # Below this is too dark
-        self.BRIGHTNESS_HIGH_THRESHOLD = 130  # Above this is too bright
-        self.TARGET_BRIGHTNESS = 127  # Ideal middle gray
-
-    def analyze_image(self, image: np.ndarray) -> ImageMetrics:
+    def __init__(self, debug_mode: bool = False):
         """
-        Analyze image and return key metrics for brightness/exposure assessment
-        """
-        # Convert to LAB color space for better brightness analysis
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0] # L channel represents brightness in LAB color space
-
-        # Calculate metrics
-        mean_brightness = np.mean(l_channel)
-        contrast = np.std(l_channel)
-        histogram_spread = np.percentile(l_channel, 95) - np.percentile(l_channel, 5)
-
-        return ImageMetrics(
-            mean_brightness=mean_brightness,
-            contrast=contrast,
-            histogram_spread=histogram_spread,
-        )
-
-    def adjust_brightness(self, image_path: str, output_path: str) -> Tuple[bool, str]:
-        """
-        Automatically detect and adjust image brightness/exposure
+        Initialize the exposure correction system.
 
         Args:
-            image_path: Path to input image
-            output_path: Path to save processed image
+            debug_mode (bool): If True, enables debugging visualizations
+        """
+        self.debug_mode = debug_mode
+        self.setup_logging()
 
-        Returns:
-            Tuple[bool, str]: Success status and message
+    def setup_logging(self):
+        """Configure logging for the exposure correction process."""
+        logging.basicConfig(
+            level=logging.INFO, 
+            format="%(asctime)s - %(levelname)s - %(message)s"
+        )
+        self.logger = logging.getLogger(__name__)
+
+    def analyze_exposure(self, image: np.ndarray) -> Tuple[float, float, float]:
+        """
+        Analyze image exposure characteristics.
         """
         try:
-            # Read image
-            img = cv2.imread(image_path)
-            if img is None:
-                return False, "Failed to read image"
-
-            # Get initial metrics
-            metrics = self.analyze_image(img)
-            self.logger.info(f"Initial metrics: {metrics}")
-
-            # Determine if adjustment is needed
-            if metrics.mean_brightness < self.BRIGHTNESS_LOW_THRESHOLD:
-                # Image is too dark - apply adaptive histogram equalization
-                self.logger.info("Image is too dark, applying brightness enhancement")
-                processed_img = self._enhance_dark_image(img)
-
-            elif metrics.mean_brightness > self.BRIGHTNESS_HIGH_THRESHOLD:
-                # Image is too bright - reduce brightness
-                self.logger.info("Image is too bright, reducing brightness")
-                processed_img = self._reduce_brightness(img)
-
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             else:
-                # Image is within acceptable range - apply subtle optimization
-                self.logger.info(
-                    "Image brightness is acceptable, applying subtle optimization"
-                )
-                processed_img = self._optimize_image(img)
+                gray = image
 
-            # Verify improvement
-            final_metrics = self.analyze_image(processed_img)
-            self.logger.info(f"Final metrics: {final_metrics}")
+            avg_brightness = np.mean(gray)
+            overexposed = np.sum(gray >= 250) / gray.size
+            underexposed = np.sum(gray <= 5) / gray.size
 
-            # Save processed image
-            cv2.imwrite(output_path, processed_img)
+            if self.debug_mode:
+                self.logger.info(f"Average brightness: {avg_brightness:.2f}")
+                self.logger.info(f"Overexposed ratio: {overexposed:.3f}")
+                self.logger.info(f"Underexposed ratio: {underexposed:.3f}")
 
-            return True, "Image processed successfully"
+            return avg_brightness, overexposed, underexposed
+        except Exception as e:
+            self.logger.error(f"Error in analyze_exposure: {str(e)}")
+            raise
+
+    def apply_local_exposure_correction(
+        self, image: np.ndarray, block_size: int = 16
+    ) -> np.ndarray:
+        """
+        Apply local exposure correction using adaptive processing.
+        """
+        try:
+            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(block_size, block_size))
+            corrected_l = clahe.apply(l)
+
+            corrected_lab = cv2.merge([corrected_l, a, b])
+            return cv2.cvtColor(corrected_lab, cv2.COLOR_LAB2BGR)
+        except Exception as e:
+            self.logger.error(f"Error in apply_local_exposure_correction: {str(e)}")
+            raise
+
+    def correct_exposure(self, image: np.ndarray) -> np.ndarray:
+        """
+        Main method to correct image exposure.
+        """
+        try:
+            if image is None or image.size == 0:
+                raise ValueError("Invalid input image")
+
+            corrected = image.copy()
+            corrected = self.apply_local_exposure_correction(corrected)
+            
+            avg_brightness, _, _ = self.analyze_exposure(corrected)
+            
+            # Fine-tune brightness if needed
+            if avg_brightness < 100:
+                corrected = cv2.convertScaleAbs(corrected, alpha=1.2, beta=10)
+            elif avg_brightness > 200:
+                corrected = cv2.convertScaleAbs(corrected, alpha=0.8, beta=-10)
+
+            return corrected
+        except Exception as e:
+            self.logger.error(f"Error in correct_exposure: {str(e)}")
+            raise
+
+    def adjust_brightness(self, input_path: str, output_path: str) -> Tuple[bool, str]:
+        """
+        Process an image file and save the enhanced version.
+        
+        Args:
+            input_path: Path to the input image
+            output_path: Path where the processed image should be saved
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            # Read the image
+            image = cv2.imread(input_path)
+            if image is None:
+                return False, "Failed to load input image"
+
+            # Process the image
+            enhanced_image = self.correct_exposure(image)
+
+            # Ensure the output directory exists
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            # Save the processed image
+            success = cv2.imwrite(output_path, enhanced_image)
+            if not success:
+                return False, "Failed to save enhanced image"
+
+            return True, "Image enhanced successfully"
 
         except Exception as e:
-            self.logger.error(f"Error processing image: {str(e)}")
-            return False, str(e)
-
-    def _enhance_dark_image(self, img: np.ndarray) -> np.ndarray:
-        """
-        Enhance dark images using adaptive histogram equalization
-        """
-        # Convert to LAB color space
-        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-
-        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-
-        # Merge channels and convert back to BGR
-        enhanced_lab = cv2.merge([cl, a, b])
-        enhanced_img = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-
-        return enhanced_img
-
-    def _reduce_brightness(self, img: np.ndarray) -> np.ndarray:
-        """
-        Reduce brightness for overexposed images
-        """
-        # Convert to HSV color space
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-        # Calculate reduction factor based on current brightness
-        current_brightness = np.mean(hsv[:, :, 2])
-        reduction_factor = self.TARGET_BRIGHTNESS / current_brightness  # Adjust to target brightness
-
-        # Adjust V channel (brightness)
-        hsv[:, :, 2] = np.clip(hsv[:, :, 2] * reduction_factor, 0, 255).astype(np.uint8)
-
-        # Convert back to BGR
-        adjusted_img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
-        return adjusted_img
-
-    def _optimize_image(self, img: np.ndarray) -> np.ndarray:
-        """
-        Apply subtle optimization for images with acceptable brightness
-        """
-        # Convert to LAB color space
-        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-
-        # Apply gentle CLAHE
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-
-        # Merge channels and convert back
-        enhanced_lab = cv2.merge([cl, a, b])
-        enhanced_img = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-
-        return enhanced_img
-
-
-def setup_logging():
-    """Configure logging settings"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(),  # Print to console
-            logging.FileHandler("image_processing.log"),  # Save to file
-        ],
-    )
-    return logging.getLogger(__name__)
-
-
-def main():
-    # Setup logging
-    logger = setup_logging()
-
-    # Initialize the ImageProcessor
-    processor = ImageProcessor()
-
-    # Define input image name and output image name
-    input_image = "18.png"  # Place your image in the same directory with this name
-    output_image = "enhanced_" + input_image
-
-    # Get the current directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(current_dir, input_image)
-    output_path = os.path.join(current_dir, output_image)
-
-    # Check if input image exists
-    if not os.path.exists(input_path):
-        logger.error(f"Input image not found: {input_path}")
-        print(
-            f"Please place an image named '{input_image}' in the same directory as this script."
-        )
-        return
-
-    # Process the image
-    logger.info(f"Processing image: {input_image}")
-    success, message = processor.adjust_brightness(input_path, output_path)
-
-    if success:
-        logger.info(f"Image processing completed successfully")
-        logger.info(f"Enhanced image saved as: {output_image}")
-        print(f"\nSuccess! Enhanced image has been saved as '{output_image}'")
-    else:
-        logger.error(f"Image processing failed: {message}")
-        print(f"\nError: {message}")
-
-
-if __name__ == "__main__":
-    main()
+            self.logger.error(f"Error in adjust_brightness: {str(e)}")
+            return False, f"Error processing image: {str(e)}"

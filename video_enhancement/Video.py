@@ -1,317 +1,235 @@
-import cv2
 import numpy as np
-import logging
+import cv2
+from typing import Tuple
 import os
-from typing import Tuple, Optional
-from dataclasses import dataclass
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+from Image_Enhancement.Image import ImageProcessor
 
-@dataclass
-class FrameMetrics:
-    mean_brightness: float
-    contrast: float
-    histogram_spread: float
-    frame_number: int
-
-class VideoProcessor:
-    def __init__(self, user_login: str = "bibhabasuiitkgp", timestamp: str = "2025-03-09 05:49:42"):
-        self.logger = logging.getLogger(__name__)
-        
-        # Threshold values for brightness adjustment
-        self.BRIGHTNESS_LOW_THRESHOLD = 80  # Below this is too dark
-        self.BRIGHTNESS_HIGH_THRESHOLD = 200  # Above this is too bright
-        self.TARGET_BRIGHTNESS = 127  # Ideal middle gray
-        
-        # Temporal smoothing parameters
-        self.SMOOTHING_WINDOW = 5  # Number of frames for smoothing
-        self.previous_adjustments = []
-        
-        # Watermark settings
-        self.user_login = user_login
-        self.timestamp = timestamp
-
-    def analyze_frame(self, frame: np.ndarray, frame_number: int) -> FrameMetrics:
+class VideoProcessor(ImageProcessor):
+    def __init__(self, debug_mode: bool = False):
         """
-        Analyze video frame and return key metrics for brightness/exposure assessment
+        Initialize the video processing system.
+        Inherits from ImageProcessor for frame-by-frame processing.
         """
-        # Convert to LAB color space for better brightness analysis
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0]
+        super().__init__(debug_mode)
+        self.processing_status = {}
 
-        # Calculate metrics
-        mean_brightness = np.mean(l_channel)
-        contrast = np.std(l_channel)
-        histogram_spread = np.percentile(l_channel, 95) - np.percentile(l_channel, 5)
-
-        return FrameMetrics(
-            mean_brightness=mean_brightness,
-            contrast=contrast,
-            histogram_spread=histogram_spread,
-            frame_number=frame_number
-        )
-
-    def _get_smoothed_adjustment(self, current_adjustment: float) -> float:
+    def get_video_info(self, video_path: str) -> Tuple[int, int, int, float]:
         """
-        Apply temporal smoothing to avoid sudden brightness changes
-        """
-        self.previous_adjustments.append(current_adjustment)
-        if len(self.previous_adjustments) > self.SMOOTHING_WINDOW:
-            self.previous_adjustments.pop(0)
-        
-        return np.mean(self.previous_adjustments)
-
-    def _enhance_dark_frame(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Enhance dark frames using adaptive histogram equalization
-        """
-        # Convert to LAB color space
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-
-        # Apply CLAHE with temporal consistency
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-
-        # Merge channels and convert back to BGR
-        enhanced_lab = cv2.merge([cl, a, b])
-        enhanced_frame = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-
-        return enhanced_frame
-
-    def _reduce_brightness(self, frame: np.ndarray, current_brightness: float) -> np.ndarray:
-        """
-        Reduce brightness for overexposed frames with temporal smoothing
-        """
-        # Convert to HSV color space
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-        # Calculate reduction factor with temporal smoothing
-        reduction_factor = self.TARGET_BRIGHTNESS / current_brightness
-        smoothed_factor = self._get_smoothed_adjustment(reduction_factor)
-
-        # Adjust V channel (brightness)
-        hsv[:, :, 2] = np.clip(hsv[:, :, 2] * smoothed_factor, 0, 255).astype(np.uint8)
-
-        # Convert back to BGR
-        adjusted_frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
-        return adjusted_frame
-
-    def _optimize_frame(self, frame: np.ndarray) -> np.ndarray:
-        """
-        Apply subtle optimization for frames with acceptable brightness
-        """
-        # Convert to LAB color space
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-
-        # Apply gentle CLAHE
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        cl = clahe.apply(l)
-
-        # Merge channels and convert back
-        enhanced_lab = cv2.merge([cl, a, b])
-        enhanced_frame = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
-
-        return enhanced_frame
-
-    def add_mansio_watermark(self, frame: np.ndarray) -> np.ndarray:
-        """Add Mansio watermark with timestamp and user info"""
-        output = frame.copy()
-        
-        # Main watermark text
-        main_text = "Mansio"
-        timestamp_text = f"UTC: {self.timestamp}"
-        user_text = f"Created by: {self.user_login}"
-        
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        main_font_scale = 1.5
-        info_font_scale = 0.6
-        main_thickness = 3
-        info_thickness = 2
-        color = (255, 255, 255)  # White
-        padding = 20
-        line_spacing = 5
-        
-        # Calculate text sizes
-        (main_width, main_height), _ = cv2.getTextSize(
-            main_text, font, main_font_scale, main_thickness
-        )
-        (time_width, time_height), _ = cv2.getTextSize(
-            timestamp_text, font, info_font_scale, info_thickness
-        )
-        (user_width, user_height), _ = cv2.getTextSize(
-            user_text, font, info_font_scale, info_thickness
-        )
-        
-        # Calculate positions
-        total_height = main_height + time_height + user_height + 2 * line_spacing
-        max_width = max(main_width, time_width, user_width)
-        
-        x = frame.shape[1] - max_width - 2 * padding
-        y_bottom = frame.shape[0] - padding
-        
-        # Create semi-transparent background
-        overlay = output.copy()
-        cv2.rectangle(
-            overlay,
-            (x - padding, y_bottom - total_height - 2 * padding),
-            (x + max_width + padding, y_bottom + padding),
-            (0, 0, 0),
-            -1
-        )
-        
-        # Apply transparency
-        alpha = 0.5
-        cv2.addWeighted(overlay, alpha, output, 1 - alpha, 0, output)
-        
-        # Add text
-        y_main = y_bottom - user_height - time_height - 2 * line_spacing
-        y_time = y_bottom - user_height - line_spacing
-        y_user = y_bottom
-        
-        # Draw text
-        cv2.putText(
-            output, main_text, (x, y_main),
-            font, main_font_scale, color, main_thickness, cv2.LINE_AA
-        )
-        cv2.putText(
-            output, timestamp_text, (x, y_time),
-            font, info_font_scale, color, info_thickness, cv2.LINE_AA
-        )
-        cv2.putText(
-            output, user_text, (x, y_user),
-            font, info_font_scale, color, info_thickness, cv2.LINE_AA
-        )
-        
-        return output
-
-    def process_video(self, input_path: str, output_path: str) -> Tuple[bool, str]:
-        """
-        Process video file and adjust brightness/exposure frame by frame
-
-        Args:
-            input_path: Path to input video
-            output_path: Path to save processed video
-
-        Returns:
-            Tuple[bool, str]: Success status and message
+        Get video metadata.
         """
         try:
-            # Open video file
-            cap = cv2.VideoCapture(input_path)
+            cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                return False, "Failed to open video file"
+                raise ValueError("Failed to open video file")
 
-            # Get video properties
-            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            
+            cap.release()
+            return frame_count, width, height, fps
+        except Exception as e:
+            self.logger.error(f"Error getting video info: {str(e)}")
+            raise
 
-            # Initialize video writer
+    def add_watermark(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Add Mansio watermark with timestamp and user info to a frame.
+        Creates a professional-looking overlay with proper formatting and positioning.
+        """
+        try:
+            height, width = frame.shape[:2]
+            
+            # Fixed timestamp and user info
+            timestamp = "2025-03-09 21:51:48"  # Use the fixed timestamp
+            user = "bibhabasuiitkgp"
+            
+            # Create a more structured watermark with proper spacing
+            watermark_text = [
+                "MANSIO",  # Brand name in caps
+                f"Processed: {timestamp} UTC",  # Timestamp
+                f"User: {user}"  # User info
+            ]
+            
+            # Text settings
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            base_font_scale = min(width, height) / 1500.0
+            
+            # Different sizes for different lines
+            font_scales = [
+                base_font_scale * 1.2,  # Larger for brand name
+                base_font_scale * 0.9,  # Smaller for timestamp
+                base_font_scale * 0.9   # Smaller for user info
+            ]
+            
+            # Calculate total height and maximum width
+            total_height = 0
+            max_width = 0
+            text_sizes = []
+            
+            for text, scale in zip(watermark_text, font_scales):
+                thickness = max(1, int(scale * 2))
+                (text_width, text_height), baseline = cv2.getTextSize(
+                    text, font, scale, thickness
+                )
+                text_sizes.append((text_width, text_height, thickness, baseline))
+                total_height += text_height + baseline + 5  # 5 pixels spacing
+                max_width = max(max_width, text_width)
+
+            # Position the watermark block
+            padding = 20
+            margin = 10
+            block_width = max_width + 2 * padding
+            block_height = total_height + 2 * padding
+            
+            # Create position for the entire block (bottom-right corner)
+            block_x = width - block_width - margin
+            block_y = height - margin - block_height
+
+            # Create semi-transparent background
+            overlay = frame.copy()
+            cv2.rectangle(
+                overlay,
+                (block_x, block_y),
+                (block_x + block_width, block_y + block_height),
+                (0, 0, 0),
+                -1
+            )
+            
+            # Apply the overlay with transparency
+            alpha = 0.7
+            frame = cv2.addWeighted(overlay, 1-alpha, frame, alpha, 0)
+
+            # Add text lines
+            current_y = block_y + padding
+            for i, (text, font_scale) in enumerate(zip(watermark_text, font_scales)):
+                text_width, text_height, thickness, baseline = text_sizes[i]
+                
+                # Center text horizontally in the block
+                text_x = block_x + (block_width - text_width) // 2
+                
+                # Add text with white color
+                cv2.putText(
+                    frame,
+                    text,
+                    (text_x, current_y + text_height),
+                    font,
+                    font_scale,
+                    (255, 255, 255),  # White color
+                    thickness,
+                    cv2.LINE_AA
+                )
+                
+                current_y += text_height + baseline + 5
+
+            # Add a subtle border around the block
+            cv2.rectangle(
+                frame,
+                (block_x, block_y),
+                (block_x + block_width, block_y + block_height),
+                (255, 255, 255),  # White border
+                1,  # Thickness
+                cv2.LINE_AA
+            )
+            
+            return frame
+            
+        except Exception as e:
+            self.logger.error(f"Error adding watermark: {str(e)}")
+            return frame
+
+    def process_frame_chunk(self, frames: list, start_idx: int) -> list:
+        """
+        Process a chunk of frames in parallel.
+        """
+        processed_frames = []
+        for i, frame in enumerate(frames):
+            try:
+                processed_frame = self.correct_exposure(frame)
+                processed_frame = self.add_watermark(processed_frame)
+                processed_frames.append(processed_frame)
+                
+                if self.debug_mode and i % 10 == 0:
+                    self.logger.info(f"Processed frame {start_idx + i}")
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing frame {start_idx + i}: {str(e)}")
+                processed_frames.append(frame)
+                
+        return processed_frames
+
+    def adjust_video_brightness(
+        self, 
+        input_path: str, 
+        output_path: str,
+        max_workers: int = 4,
+        chunk_size: int = 30
+    ) -> Tuple[bool, str]:
+        """
+        Process a video file and save the enhanced version.
+        """
+        try:
+            cap = cv2.VideoCapture(input_path)
+            if not cap.isOpened():
+                return False, "Failed to open input video"
+
+            frame_count, width, height, fps = self.get_video_info(input_path)
+            
+            # Ensure output directory exists
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+            out = cv2.VideoWriter(
+                output_path, 
+                fourcc, 
+                fps, 
+                (width, height)
+            )
 
-            frame_count = 0
-            self.previous_adjustments = []
+            frames_buffer = []
+            processed_count = 0
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                with tqdm(total=frame_count, desc="Processing video") as pbar:
+                    while True:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
 
-            # Process frame by frame
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
+                        frames_buffer.append(frame)
+                        
+                        if len(frames_buffer) >= chunk_size:
+                            processed_frames = self.process_frame_chunk(
+                                frames_buffer, 
+                                processed_count
+                            )
+                            
+                            for processed_frame in processed_frames:
+                                out.write(processed_frame)
+                            
+                            processed_count += len(frames_buffer)
+                            pbar.update(len(frames_buffer))
+                            frames_buffer = []
 
-                # Get frame metrics
-                metrics = self.analyze_frame(frame, frame_count)
-                self.logger.info(f"Frame {frame_count}/{total_frames} - Brightness: {metrics.mean_brightness:.2f}")
+                    if frames_buffer:
+                        processed_frames = self.process_frame_chunk(
+                            frames_buffer, 
+                            processed_count
+                        )
+                        for processed_frame in processed_frames:
+                            out.write(processed_frame)
+                        
+                        processed_count += len(frames_buffer)
+                        pbar.update(len(frames_buffer))
 
-                # Apply appropriate adjustment
-                if metrics.mean_brightness < self.BRIGHTNESS_LOW_THRESHOLD:
-                    processed_frame = self._enhance_dark_frame(frame)
-                elif metrics.mean_brightness > self.BRIGHTNESS_HIGH_THRESHOLD:
-                    processed_frame = self._reduce_brightness(frame, metrics.mean_brightness)
-                else:
-                    processed_frame = self._optimize_frame(frame)
-
-                # Add Mansio watermark
-                watermarked_frame = self.add_mansio_watermark(processed_frame)
-
-                # Write processed frame
-                out.write(watermarked_frame)
-                frame_count += 1
-
-                # Optional: Display progress
-                if frame_count % 100 == 0:
-                    progress = (frame_count / total_frames) * 100
-                    print(f"Processing: {progress:.1f}% complete")
-
-            # Release resources
             cap.release()
             out.release()
-
-            return True, f"Video processed successfully. Processed {frame_count} frames."
+            
+            return True, "Video enhanced successfully"
 
         except Exception as e:
-            self.logger.error(f"Error processing video: {str(e)}")
-            return False, str(e)
-        finally:
-            # Ensure resources are released
-            if 'cap' in locals():
-                cap.release()
-            if 'out' in locals():
-                out.release()
-
-def setup_logging():
-    """Configure logging settings"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(),  # Print to console
-            logging.FileHandler("video_processing.log"),  # Save to file
-        ],
-    )
-    return logging.getLogger(__name__)
-
-def main():
-    # Setup logging
-    logger = setup_logging()
-
-    # Initialize the VideoProcessor with specified timestamp and user
-    processor = VideoProcessor(
-        user_login="bibhabasuiitkgp",
-        timestamp="2025-03-09 05:49:42"
-    )
-
-    # Define input video name and output video name
-    input_video = "lowlight1.mp4"  # Place your video in the same directory with this name
-    output_video = f"enhanced_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-
-    # Get the current directory
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(current_dir, input_video)
-    output_path = os.path.join(current_dir, output_video)
-
-    # Check if input video exists
-    if not os.path.exists(input_path):
-        logger.error(f"Input video not found: {input_path}")
-        print(f"Please place a video named '{input_video}' in the same directory as this script.")
-        return
-
-    # Process the video
-    logger.info(f"Processing video: {input_video}")
-    print("Starting video processing. This may take a while depending on the video length...")
-    
-    success, message = processor.process_video(input_path, output_path)
-
-    if success:
-        logger.info("Video processing completed successfully")
-        logger.info(f"Enhanced video saved as: {output_video}")
-        print(f"\nSuccess! Enhanced video has been saved as '{output_video}'")
-    else:
-        logger.error(f"Video processing failed: {message}")
-        print(f"\nError: {message}")
-
-if __name__ == "__main__":
-    main()
+            self.logger.error(f"Error in adjust_video_brightness: {str(e)}")
+            return False, f"Error processing video: {str(e)}"
