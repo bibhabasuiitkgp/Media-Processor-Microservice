@@ -145,6 +145,10 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
+## Example References
+
+The `Example_reference` folder contains processed samples that demonstrate the system's capabilities. You can use these as reference points to understand the expected output quality and features.
+
 ## Error Handling
 
 The API includes comprehensive error handling:
